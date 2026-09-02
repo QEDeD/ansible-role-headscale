@@ -32,24 +32,17 @@
     - { name: headscale_config_dns_base_domain, when: "{{ headscale_config_dns_magic_dns }}" }
     - { name: headscale_config_derp_server_stun_listen_addr, when: "{{ headscale_config_derp_server_enabled }}" }
 
-- name: Fail if embedded DERP STUN ports do not match
+- name: Fail if embedded DERP STUN listener and container ports do not match
   vars:
     headscale_config_derp_server_stun_listen_port: "{{ (headscale_config_derp_server_stun_listen_addr | string | split(':') | last) | int }}"
-    headscale_container_derp_stun_host_port: "{{ (headscale_container_derp_stun_bind_port | string | split(':') | last) | int }}"
     headscale_container_derp_stun_internal_port: "{{ headscale_container_derp_stun_port | int }}"
   ansible.builtin.fail:
     msg: >-
-      headscale_config_derp_server_stun_listen_addr, headscale_container_derp_stun_port, and the host port in
-      headscale_container_derp_stun_bind_port must use the same port. Headscale advertises the port from
-      headscale_config_derp_server_stun_listen_addr to clients, so mapping a different public port does not work.
+      headscale_config_derp_server_stun_listen_addr and headscale_container_derp_stun_port must use the same port.
+      The container publication must target the port on which Headscale's embedded DERP STUN server listens.
   when:
     - headscale_config_derp_server_enabled | bool
-    - >-
-      headscale_config_derp_server_stun_listen_port != headscale_container_derp_stun_internal_port
-      or (
-        headscale_container_derp_stun_bind_port | string | length > 0
-        and headscale_container_derp_stun_host_port != headscale_container_derp_stun_internal_port
-      )
+    - headscale_config_derp_server_stun_listen_port != headscale_container_derp_stun_internal_port
 
 - name: Fail if headscale_config_dns_base_domain matches headscale_hostname
   ansible.builtin.fail:

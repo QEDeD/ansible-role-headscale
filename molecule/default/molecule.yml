@@ -45,6 +45,7 @@ provisioner:
         # STUN listeners are published on.
         headscale_molecule_grpc_bind_port: 50443
         headscale_molecule_derp_stun_bind_port: 13478
+        headscale_molecule_derp_stun_container_port: 13479
 
         # Variables for Headscale
         headscale_uid: 1000
@@ -64,11 +65,13 @@ provisioner:
         headscale_container_derp_stun_bind_port: "127.0.0.1:{{ headscale_molecule_derp_stun_bind_port }}"
 
         # Use non-default container ports so the scenario proves that the
-        # systemd unit does not hardcode them.
+        # systemd unit does not hardcode them. Keep the STUN host and
+        # container ports different to exercise both sides of the Docker
+        # mapping; public/NAT reachability is outside this scenario.
         headscale_container_http_api_port: 18080
         headscale_container_http_metrics_port: 19090
         headscale_container_grpc_port: 15043
-        headscale_container_derp_stun_port: "{{ headscale_molecule_derp_stun_bind_port }}"
+        headscale_container_derp_stun_port: "{{ headscale_molecule_derp_stun_container_port }}"
 
         # Headscale (>= 0.29) refuses to start when it ends up with an empty
         # DERP map: `initial DERPMap is empty, Headscale requires at least one
