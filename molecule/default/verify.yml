@@ -40,25 +40,31 @@
         success_msg: "headscale.service is active"
 
     - name: Inspect the Headscale container
-      community.docker.docker_container_info:
-        name: "{{ headscale_defaults.headscale_identifier }}"
-      register: headscale_container_info
+      ansible.builtin.command:
+        argv:
+          - docker
+          - container
+          - inspect
+          - "{{ headscale_defaults.headscale_identifier }}"
+      register: headscale_container_inspect
+      changed_when: false
 
     - name: Assert configured TCP and UDP ports are published
       vars:
+        headscale_molecule_published_ports: >-
+          {{ (headscale_container_inspect.stdout | from_json)[0].NetworkSettings.Ports }}
         headscale_molecule_api_port_key: "{{ (headscale_container_http_api_port | string) ~ '/tcp' }}"
         headscale_molecule_metrics_port_key: "{{ (headscale_container_http_metrics_port | string) ~ '/tcp' }}"
         headscale_molecule_grpc_port_key: "{{ (headscale_container_grpc_port | string) ~ '/tcp' }}"
         headscale_molecule_derp_stun_port_key: "{{ (headscale_container_derp_stun_port | string) ~ '/udp' }}"
         headscale_molecule_derp_stun_host_port: >-
-          {{ headscale_container_info.container.NetworkSettings.Ports[headscale_molecule_derp_stun_port_key][0].HostPort }}
+          {{ headscale_molecule_published_ports[headscale_molecule_derp_stun_port_key][0].HostPort }}
       ansible.builtin.assert:
         that:
-          - headscale_container_info.exists
-          - headscale_molecule_api_port_key in headscale_container_info.container.NetworkSettings.Ports
-          - headscale_molecule_metrics_port_key in headscale_container_info.container.NetworkSettings.Ports
-          - headscale_molecule_grpc_port_key in headscale_container_info.container.NetworkSettings.Ports
-          - headscale_molecule_derp_stun_port_key in headscale_container_info.container.NetworkSettings.Ports
+          - headscale_molecule_api_port_key in headscale_molecule_published_ports
+          - headscale_molecule_metrics_port_key in headscale_molecule_published_ports
+          - headscale_molecule_grpc_port_key in headscale_molecule_published_ports
+          - headscale_molecule_derp_stun_port_key in headscale_molecule_published_ports
           - (headscale_molecule_derp_stun_host_port | string) == (headscale_molecule_derp_stun_bind_port | string)
         fail_msg: "Headscale container port publication does not match the configured listener contract"
         success_msg: "Headscale publishes its configured TCP and embedded DERP STUN UDP ports"
@@ -156,6 +162,8 @@
         fail_msg: "The embedded DERP server did not answer (HTTP {{ headscale_derp_probe.status }})"
         success_msg: "The embedded DERP server answers"
 
+    # Headscale deliberately accepts only Tailscale STUN requests. Build the
+    # same SOFTWARE and FINGERPRINT attributes as tailscale.com's stun.Request.
     - name: Query the published embedded DERP STUN listener
       ansible.builtin.command:
         argv:
@@ -165,9 +173,16 @@
             import secrets
             import socket
             import struct
+            import zlib
 
             transaction_id = secrets.token_bytes(12)
-            request = struct.pack("!HHI12s", 0x0001, 0, 0x2112A442, transaction_id)
+            software_attribute = struct.pack("!HH8s", 0x8022, 8, b"tailnode")
+            request_without_fingerprint = (
+                struct.pack("!HHI12s", 0x0001, 20, 0x2112A442, transaction_id)
+                + software_attribute
+            )
+            fingerprint = (zlib.crc32(request_without_fingerprint) & 0xFFFFFFFF) ^ 0x5354554E
+            request = request_without_fingerprint + struct.pack("!HHI", 0x8028, 4, fingerprint)
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 sock.settimeout(5)
                 sock.sendto(request, ("127.0.0.1", {{ headscale_molecule_derp_stun_bind_port }}))
