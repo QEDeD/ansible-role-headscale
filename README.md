@@ -27,9 +27,11 @@ headscale_config_derp_server_enabled: true
 headscale_container_derp_stun_bind_port: 3478
 ```
 
-The host firewall and any upstream NAT must also allow and forward UDP 3478. Headscale advertises the port from `headscale_config_derp_server_stun_listen_addr`, so that listen port must match `headscale_container_derp_stun_port` and be reachable externally under the same public port number. For direct Docker publication, the host port in `headscale_container_derp_stun_bind_port` should also match. A different Docker host port only works when upstream NAT maps the advertised public port to it. Headscale does not currently support configuring a separate advertised STUN port.
+Publication is opt-in to preserve existing deployments. The host firewall and any external router or firewall must also allow and, when applicable, forward UDP 3478. Headscale advertises the port from `headscale_config_derp_server_stun_listen_addr`, so when publishing it that listener port must match `headscale_container_derp_stun_port` and be reachable externally under the same public port number. For direct Docker publication, the host port in `headscale_container_derp_stun_bind_port` should also match. A different Docker host port requires an external router or firewall to forward the advertised public UDP port to it. Headscale does not currently support configuring a separate advertised STUN port.
 
-By default, `headscale_config_derp_server_ipv4` and `headscale_config_derp_server_ipv6` are empty, so clients resolve `headscale_hostname`. Set either variable to the embedded DERP server's actual public address when explicit IP advertisement is desired.
+By default, `headscale_config_derp_server_ipv4` and `headscale_config_derp_server_ipv6` are empty, so clients resolve the hostname from `headscale_config_server_url` (normally derived from `headscale_hostname`). Headscale recommends setting the embedded DERP server's actual public IPv4 and IPv6 addresses for better connection stability, especially when DNS is unavailable.
+
+If `headscale_container_extra_arguments_custom` already contains a manual STUN `-p` mapping, remove that mapping before setting `headscale_container_derp_stun_bind_port` to avoid publishing the same container port twice.
 
 ## Development
 
