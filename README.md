@@ -18,6 +18,19 @@ Check [`defaults/main.yml`](defaults/main.yml) for the full list of supported op
 
 💡 For an Ansible playbook which integrates this role and makes it easier to use, see the [Mother-of-All-Self-Hosting Ansible playbook](https://github.com/mother-of-all-self-hosting/mash-playbook).
 
+## Embedded DERP server
+
+Headscale serves the embedded DERP relay through its normal HTTPS endpoint, but its STUN listener uses a separate UDP port. To publish the default UDP port from the container, use:
+
+```yaml
+headscale_config_derp_server_enabled: true
+headscale_container_derp_stun_bind_port: 3478
+```
+
+The host firewall and any upstream NAT must also allow and forward UDP 3478. Headscale advertises the port from `headscale_config_derp_server_stun_listen_addr`, so the public host port, `headscale_container_derp_stun_port`, and the port in the listen address must match. Headscale does not currently support advertising a different public STUN port.
+
+By default, `headscale_config_derp_server_ipv4` and `headscale_config_derp_server_ipv6` are empty, so clients resolve `headscale_hostname`. Set either variable to the embedded DERP server's actual public address when explicit IP advertisement is desired.
+
 ## Development
 
 ### pre-commit

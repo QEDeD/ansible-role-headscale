@@ -39,6 +39,36 @@
         fail_msg: "headscale.service not active ({{ headscale_service.status.ActiveState }})"
         success_msg: "headscale.service is active"
 
+    - name: Inspect the Headscale container
+      community.docker.docker_container_info:
+        name: "{{ headscale_identifier }}"
+      register: headscale_container_info
+
+    - name: Assert configured TCP and UDP ports are published
+      vars:
+        headscale_molecule_api_port_key: "{{ (headscale_container_http_api_port | string) ~ '/tcp' }}"
+        headscale_molecule_metrics_port_key: "{{ (headscale_container_http_metrics_port | string) ~ '/tcp' }}"
+        headscale_molecule_grpc_port_key: "{{ (headscale_container_grpc_port | string) ~ '/tcp' }}"
+        headscale_molecule_derp_stun_port_key: "{{ (headscale_container_derp_stun_port | string) ~ '/udp' }}"
+        headscale_molecule_derp_stun_host_port: >-
+          {{ headscale_container_info.container.NetworkSettings.Ports[headscale_molecule_derp_stun_port_key][0].HostPort }}
+      ansible.builtin.assert:
+        that:
+          - headscale_container_info.exists
+          - headscale_molecule_api_port_key in headscale_container_info.container.NetworkSettings.Ports
+          - headscale_molecule_metrics_port_key in headscale_container_info.container.NetworkSettings.Ports
+          - headscale_molecule_grpc_port_key in headscale_container_info.container.NetworkSettings.Ports
+          - headscale_molecule_derp_stun_port_key in headscale_container_info.container.NetworkSettings.Ports
+          - (headscale_molecule_derp_stun_host_port | string) == (headscale_molecule_derp_stun_bind_port | string)
+        fail_msg: "Headscale container port publication does not match the configured listener contract"
+        success_msg: "Headscale publishes its configured TCP and embedded DERP STUN UDP ports"
+
+    - name: Assert embedded DERP STUN bind port is empty by default
+      ansible.builtin.assert:
+        that: headscale_defaults.headscale_container_derp_stun_bind_port == ''
+        fail_msg: "Embedded DERP STUN bind port should be empty by default"
+        success_msg: "Embedded DERP STUN bind port is empty by default"
+
     - name: Retrieve Headscale service log for debugging
       when: headscale_debug_service_enabled | bool
       ansible.builtin.command:
@@ -125,6 +155,28 @@
         that: headscale_derp_probe.status == 200
         fail_msg: "The embedded DERP server did not answer (HTTP {{ headscale_derp_probe.status }})"
         success_msg: "The embedded DERP server answers"
+
+    - name: Query the published embedded DERP STUN listener
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import secrets
+            import socket
+            import struct
+
+            transaction_id = secrets.token_bytes(12)
+            request = struct.pack("!HHI12s", 0x0001, 0, 0x2112A442, transaction_id)
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.settimeout(5)
+                sock.sendto(request, ("127.0.0.1", {{ headscale_molecule_derp_stun_bind_port }}))
+                response, _ = sock.recvfrom(2048)
+
+            message_type, _, cookie, response_transaction_id = struct.unpack("!HHI12s", response[:20])
+            if message_type != 0x0101 or cookie != 0x2112A442 or response_transaction_id != transaction_id:
+                raise SystemExit("invalid STUN binding response")
+      changed_when: false
 
     # From here on the daemon is asked to actually do something: create a user,
     # issue it a pre-auth key, and read both back. Each of these is a round
