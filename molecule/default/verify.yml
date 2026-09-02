@@ -41,7 +41,7 @@
 
     - name: Inspect the Headscale container
       community.docker.docker_container_info:
-        name: "{{ headscale_identifier }}"
+        name: "{{ headscale_defaults.headscale_identifier }}"
       register: headscale_container_info
 
     - name: Assert configured TCP and UDP ports are published
